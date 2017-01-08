@@ -1,4 +1,5 @@
 #include <base64.h>
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -63,7 +64,8 @@ static const int AWAIT_CHALLANGE = 1;
 static const int EXCHANGING = 2;
 static const int INFO = 3;
 static const int REFRESHING = 4;
-static const int END_STATE = 5;
+static const int DO_IT = 5;
+static const int END_STATE = 6;
 
 // Set global variable attributes.
 static int CURRENT_STATE = INITIAL_STATE;
@@ -138,6 +140,22 @@ bool sendEmail(String body) {
   }
 }
 
+String parseResponse(String response) {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(response);
+  
+  if (!root.success()) {
+    Serial.println("parseObject() failed");
+    return "";
+  } else {
+    String output;
+    root.printTo(output);
+    Serial.print("JSON: "); Serial.println(output);
+    return output;
+  }
+}
+
+
 String getRequest(const char* server, String request) {
 #ifdef DEBUG
   Serial.print("Function: "); Serial.println("getRequest()");
@@ -168,12 +186,19 @@ String getRequest(const char* server, String request) {
 #endif
 
     while (client.connected()) {
-      String line = client.readStringUntil('\n');
-      Serial.println(line);
-      if (line == "") {
-        Serial.println("headers received");
-        break;
+      if(client.find("HTTP/1.1 ")) {
+        String status_code = client.readStringUntil('\r');
+        Serial.print("Status code: "); Serial.println(status_code);
+        if(status_code != "200 OK") {
+          Serial.println("There was an error");
+          break;
+        }
       }
+      if(client.find("\r\n\r\n")) {
+        Serial.println("Data:");
+      }
+      String line = client.readStringUntil('\r');
+      Serial.println(line);
       result += line;
     }
 
@@ -216,12 +241,19 @@ String postRequest(const char* server, String header, String data) {
 #endif
 
     while (client.connected()) {
-      String line = client.readStringUntil('\n');
-      Serial.println(line);
-      if (line == "") {
-        Serial.println("headers received");
-        break;
+      if(client.find("HTTP/1.1 ")) {
+        String status_code = client.readStringUntil('\r');
+        Serial.print("Status code: "); Serial.println(status_code);
+        if(status_code != "200 OK") {
+          Serial.println("There was an error");
+          break;
+        }
       }
+      if(client.find("\r\n\r\n")) {
+        Serial.println("Data:");
+      }
+      String line = client.readStringUntil('\r');
+      Serial.println(line);
       result += line;
     }
 
@@ -278,7 +310,7 @@ bool exchange() {
     postHeader += ("\r\n\r\n");
 
     String result = postRequest(host, postHeader, postData);
-
+    
     CURRENT_STATE = END_STATE;
     return true;
   } else {
@@ -297,7 +329,6 @@ bool refresh() {
     postData += "&client_id=" + client_id;
     postData += "&client_secret=" + client_secret;
     postData += "&grant_type=" + String("refresh_token");
-    //Serial.print("postData: "); Serial.println(postData);
 
     String postHeader = "";
     postHeader += ("POST " + token_uri + " HTTP/1.1\r\n");
@@ -330,8 +361,11 @@ bool info() {
     reqHeader += ("\r\n\r\n");
     String result = getRequest(host, reqHeader);
 
-    CURRENT_STATE = END_STATE;
+    // need to check for valid token here
+
+    CURRENT_STATE = DO_IT;
   } else {
+    CURRENT_STATE = REFRESHING;
     return false;
   }
   return true;
@@ -422,6 +456,12 @@ void loop() {
       break;
     case REFRESHING:
       refresh();
+      break;
+    case DO_IT:
+      //sendEmail("<3");
+      appendToSheet();
+      //getSheetContent();
+      CURRENT_STATE = END_STATE;
       break;
     case END_STATE:
       break;
