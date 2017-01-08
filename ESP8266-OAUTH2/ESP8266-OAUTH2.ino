@@ -5,13 +5,17 @@
 /*
  * =====================================
  * Start editing your configuration here
- */ 
+ */
 
 //#define DEBUG true
 
 // WiFi Setup
 const char* ssid = "";
 const char* pass = "";
+
+// OAUTH2 Client credentials
+String client_id = "";
+String client_secret = "";
 
 // Tokens
 String authorization_code = "";
@@ -26,13 +30,9 @@ String email_to = "";
 String sheet_id = "";
 String sheet_range = "Sheet1!A:B";
 
-// OAUTH2 Client credentials
-String client_id = "";
-String client_secret = "";
-
 /* ====================================
  * Stop editing your configuration here
- */ 
+ */
 
 // SSL Setup
 // http://askubuntu.com/questions/156620/how-to-verify-the-ssl-fingerprint-by-command-line-wget-curl/
@@ -68,16 +68,63 @@ static const int END_STATE = 5;
 // Set global variable attributes.
 static int CURRENT_STATE = INITIAL_STATE;
 
+String postRequest(const char* server, String header, String data) {
+#ifdef DEBUG
+  Serial.print("Function: "); Serial.println("postRequest()");
+#endif
+
+  String result = "";
+
+  // Use WiFiClientSecure class to create TLS connection
+  WiFiClientSecure client;
+  Serial.print("Connecting to: "); Serial.println(server);
+
+  if (!client.connect(server, httpsPort)) {
+    Serial.println("connection failed");
+    return result;
+  }
+
+  if (client.verify(fingerprint, server)) {
+#ifdef DEBUG
+    Serial.println("certificate matches");
+    Serial.print("post: "); Serial.println(header + data);
+#endif
+
+    client.print(header + data);
+
+#ifdef DEBUG
+    Serial.println("request sent");
+    Serial.println("Receiving response");
+#endif
+
+    while (client.connected()) {
+      String line = client.readStringUntil('\n');
+      Serial.println(line);
+      if (line == "") {
+        Serial.println("headers received");
+        break;
+      }
+      result += line;
+    }
+
+    Serial.println("closing connection");
+    return result;
+  } else {
+    Serial.println("certificate doesn't match");
+  }
+  return result;
+}
+
 bool appendToSheet() {
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
   Serial.print("Connecting to: "); Serial.println(sheetsHost);
-  
+
   if (!client.connect(sheetsHost, httpsPort)) {
     Serial.println("connection failed");
     return false;
   }
-  
+
   if (client.verify(fingerprint, sheetsHost)) {
     Serial.println("certificate matches");
   } else {
@@ -98,10 +145,9 @@ bool appendToSheet() {
   postHeader += ("\r\n\r\n");
   Serial.print("post: "); Serial.println(postHeader + postData);
   client.print(postHeader + postData);
-
   Serial.println("request sent");
   Serial.println("Receiving response");
-  
+
   while (client.connected()) {
     String line = client.readStringUntil('\n');
     Serial.println(line);
@@ -111,23 +157,23 @@ bool appendToSheet() {
       break;
     }
   }
-  
+
   Serial.println("closing connection");
   return true;
 }
 
 bool getSheetContent() {
   // GET https://sheets.googleapis.com/v4/spreadsheets/spreadsheetId/values/Sheet1!A1:D5
-  if(sheet_id != "" && sheet_range != "") {
+  if (sheet_id != "" && sheet_range != "") {
     // Use WiFiClientSecure class to create TLS connection
     WiFiClientSecure client;
     Serial.print("Connecting to: "); Serial.println(sheetsHost);
-    
+
     if (!client.connect(sheetsHost, httpsPort)) {
       Serial.println("connection failed");
       return false;
     }
-    
+
     if (client.verify(fingerprint, sheetsHost)) {
       Serial.println("certificate matches");
     } else {
@@ -144,7 +190,7 @@ bool getSheetContent() {
 
     Serial.println("request sent");
     Serial.println("Receiving response");
-    
+
     while (client.connected()) {
       String line = client.readStringUntil('\n');
       Serial.println(line);
@@ -154,7 +200,7 @@ bool getSheetContent() {
         break;
       }
     }
-    
+
     Serial.println("closing connection");
     return true;
   } else {
@@ -163,26 +209,26 @@ bool getSheetContent() {
 }
 
 bool sendEmail(String body) {
-  if(body != "") {
+  if (body != "") {
     String userId = "me";
     String headers = "";
     headers += "From: " + email_from + "\n";
     headers += "To: " + email_from + "\n";
     headers += "Subject: I love you!\n\n";
-  
+
     String email = base64::encode(headers + body);
-    email.replace("\n","");
+    email.replace("\n", "");
     //Serial.println(email);
-    
+
     // Use WiFiClientSecure class to create TLS connection
     WiFiClientSecure client;
     Serial.print("Connecting to: "); Serial.println(host);
-    
+
     if (!client.connect(host, httpsPort)) {
       Serial.println("connection failed");
       return false;
     }
-    
+
     if (client.verify(fingerprint, host)) {
       Serial.println("certificate matches");
     } else {
@@ -206,7 +252,7 @@ bool sendEmail(String body) {
 
     Serial.println("request sent");
     Serial.println("Receiving response");
-    
+
     while (client.connected()) {
       String line = client.readStringUntil('\n');
       Serial.println(line);
@@ -216,7 +262,7 @@ bool sendEmail(String body) {
         break;
       }
     }
-    
+
     Serial.println("closing connection");
     return true;
   } else {
@@ -226,10 +272,10 @@ bool sendEmail(String body) {
 
 // create URL
 void authorize() {
-  #ifdef DEBUG
-    Serial.print("Function: "); Serial.println("authorize()");
-  #endif
-  if(refresh_token == "") {
+#ifdef DEBUG
+  Serial.print("Function: "); Serial.println("authorize()");
+#endif
+  if (refresh_token == "") {
     String URL = auth_uri + "?";
     URL += "scope=" + urlencode(scope);
     URL += "&redirect_uri=" + urlencode(redirect_uri);
@@ -237,7 +283,7 @@ void authorize() {
     URL += "&client_id=" + urlencode(client_id);
     URL += "&access_type=" + urlencode(access_type);
     Serial.println("Goto URL: ");
-    Serial.println(URL);Serial.println();
+    Serial.println(URL); Serial.println();
     Serial.print("Enter code: ");
     CURRENT_STATE = AWAIT_CHALLANGE;
   } else {
@@ -246,22 +292,22 @@ void authorize() {
 }
 
 bool exchange() {
-      Serial.println("Trying to exchange...");
-  if(authorization_code != "") {
-    // Use WiFiClientSecure class to create TLS connection
-    WiFiClientSecure client;
-    Serial.print("Connecting to: "); Serial.println(host);
-    
-    if (!client.connect(host, httpsPort)) {
-      Serial.println("connection failed");
-      return false;
-    }
-    
-    if (client.verify(fingerprint, host)) {
-      Serial.println("certificate matches");
-    } else {
-      Serial.println("certificate doesn't match");
-    }
+  Serial.println("Trying to exchange...");
+  if (authorization_code != "") {
+    //    // Use WiFiClientSecure class to create TLS connection
+    //    WiFiClientSecure client;
+    //    Serial.print("Connecting to: "); Serial.println(host);
+    //
+    //    if (!client.connect(host, httpsPort)) {
+    //      Serial.println("connection failed");
+    //      return false;
+    //    }
+    //
+    //    if (client.verify(fingerprint, host)) {
+    //      Serial.println("certificate matches");
+    //    } else {
+    //      Serial.println("certificate doesn't match");
+    //    }
 
     String postData = "";
     postData += "code=" + authorization_code;
@@ -269,7 +315,6 @@ bool exchange() {
     postData += "&client_secret=" + client_secret;
     postData += "&redirect_uri=" + redirect_uri;
     postData += "&grant_type=" + String("authorization_code");
-    //Serial.print("postData: "); Serial.println(postData);
 
     String postHeader = "";
     postHeader += ("POST " + token_uri + " HTTP/1.1\r\n");
@@ -279,42 +324,44 @@ bool exchange() {
     postHeader += ("Content-Length: ");
     postHeader += (postData.length());
     postHeader += ("\r\n\r\n");
-    Serial.print("post: "); Serial.println(postHeader + postData);
-    client.print(postHeader + postData);
 
-    Serial.println("request sent");
-    Serial.println("Receiving response");
-    
-    while (client.connected()) {
-      String line = client.readStringUntil('\n');
-      Serial.println(line);
-      //line.trim();
-      if (line == "") {
-        Serial.println("headers received");
-        break;
-      }
-    }
-    
-    Serial.println("closing connection");
+    String result = postRequest(host, postHeader, postData);
+
+    //    client.print(postHeader + postData);
+    //
+    //    Serial.println("request sent");
+    //    Serial.println("Receiving response");
+    //
+    //    while (client.connected()) {
+    //      String line = client.readStringUntil('\n');
+    //      Serial.println(line);
+    //      //line.trim();
+    //      if (line == "") {
+    //        Serial.println("headers received");
+    //        break;
+    //      }
+    //    }
+    //
+    //    Serial.println("closing connection");
 
     CURRENT_STATE = END_STATE;
     return true;
   } else {
-    return false;  
+    return false;
   }
 }
 
 bool refresh() {
-  if(refresh_token != "") {
+  if (refresh_token != "") {
     // Use WiFiClientSecure class to create TLS connection
     WiFiClientSecure client;
     Serial.print("Connecting to: "); Serial.println(host);
-    
+
     if (!client.connect(host, httpsPort)) {
       Serial.println("connection failed");
       return false;
     }
-    
+
     if (client.verify(fingerprint, host)) {
       Serial.println("certificate matches");
     } else {
@@ -341,7 +388,7 @@ bool refresh() {
 
     Serial.println("request sent");
     Serial.println("Receiving response");
-    
+
     while (client.connected()) {
       String line = client.readStringUntil('\n');
       Serial.println(line);
@@ -351,27 +398,27 @@ bool refresh() {
         break;
       }
     }
-    
+
     Serial.println("closing connection");
 
     CURRENT_STATE = END_STATE;
   } else {
-    return false;  
+    return false;
   }
   return true;
 }
 
 bool info() {
-  if(access_token != "") {
+  if (access_token != "") {
     // Use WiFiClientSecure class to create TLS connection
     WiFiClientSecure client;
     Serial.print("Connecting to: "); Serial.println(host);
-    
+
     if (!client.connect(host, httpsPort)) {
       Serial.println("connection failed");
       return false;
     }
-    
+
     if (client.verify(fingerprint, host)) {
       Serial.println("certificate matches");
     } else {
@@ -388,7 +435,7 @@ bool info() {
 
     Serial.println("request sent");
     Serial.println("Receiving response");
-    
+
     while (client.connected()) {
       String line = client.readStringUntil('\n');
       Serial.println(line);
@@ -398,49 +445,49 @@ bool info() {
         break;
       }
     }
-    
+
     Serial.println("closing connection");
 
     CURRENT_STATE = END_STATE;
   } else {
-    return false;  
+    return false;
   }
   return true;
 }
 
 String urlencode(String str)
 {
-    String encodedString="";
-    char c;
-    char code0;
-    char code1;
-    char code2;
-    for (int i =0; i < str.length(); i++){
-      c=str.charAt(i);
-      if (c == ' '){
-        encodedString+= '+';
-      } else if (isalnum(c)){
-        encodedString+=c;
-      } else{
-        code1=(c & 0xf)+'0';
-        if ((c & 0xf) >9){
-            code1=(c & 0xf) - 10 + 'A';
-        }
-        c=(c>>4)&0xf;
-        code0=c+'0';
-        if (c > 9){
-            code0=c - 10 + 'A';
-        }
-        code2='\0';
-        encodedString+='%';
-        encodedString+=code0;
-        encodedString+=code1;
-        //encodedString+=code2;
+  String encodedString = "";
+  char c;
+  char code0;
+  char code1;
+  char code2;
+  for (int i = 0; i < str.length(); i++) {
+    c = str.charAt(i);
+    if (c == ' ') {
+      encodedString += '+';
+    } else if (isalnum(c)) {
+      encodedString += c;
+    } else {
+      code1 = (c & 0xf) + '0';
+      if ((c & 0xf) > 9) {
+        code1 = (c & 0xf) - 10 + 'A';
       }
-      yield();
+      c = (c >> 4) & 0xf;
+      code0 = c + '0';
+      if (c > 9) {
+        code0 = c - 10 + 'A';
+      }
+      code2 = '\0';
+      encodedString += '%';
+      encodedString += code0;
+      encodedString += code1;
+      //encodedString+=code2;
     }
-    return encodedString;
-    
+    yield();
+  }
+  return encodedString;
+
 }
 
 // enable Serial communication
@@ -449,7 +496,7 @@ String serialComm() {
   while (Serial.available()) {
     String inputString = Serial.readString();
     inputString.trim();
-    if(inputString != "") {
+    if (inputString != "") {
       return inputString;
     }
   }
@@ -458,28 +505,28 @@ String serialComm() {
 
 void setup() {
   Serial.begin(115200); Serial.println();
-  
+
   Serial.print("Connecting to: "); Serial.println(ssid);
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  
+
   Serial.println();
   Serial.print("WiFi connected. "); Serial.print("IP address: "); Serial.println(WiFi.localIP());
   Serial.println();
 }
 
 void loop() {
-  if(access_token != "") {
+  if (access_token != "") {
     sendEmail("<3");
     appendToSheet();
     getSheetContent();
     CURRENT_STATE = INFO;
   }
 
-  
+
   // put your main code here, to run repeatedly:
   switch (CURRENT_STATE) {
 
@@ -488,7 +535,7 @@ void loop() {
       break;
     case AWAIT_CHALLANGE:
       authorization_code = serialComm();
-      if(authorization_code != "") {
+      if (authorization_code != "") {
         Serial.println("********");
         CURRENT_STATE = EXCHANGING;
       }
