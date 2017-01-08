@@ -246,6 +246,7 @@ void authorize() {
 }
 
 bool exchange() {
+      Serial.println("Trying to exchange...");
   if(authorization_code != "") {
     // Use WiFiClientSecure class to create TLS connection
     WiFiClientSecure client;
@@ -442,18 +443,17 @@ String urlencode(String str)
     
 }
 
-void serialComm() {
-  // enable Serial communication
+// enable Serial communication
+String serialComm() {
+  String result = "";
   while (Serial.available()) {
     String inputString = Serial.readString();
     inputString.trim();
     if(inputString != "") {
-      Serial.println(inputString);
-      authorization_code = inputString;
-      CURRENT_STATE = EXCHANGING;
-      Serial.println("Trying to exchange...");
+      return inputString;
     }
   }
+  return result;
 }
 
 void setup() {
@@ -487,7 +487,11 @@ void loop() {
       authorize();
       break;
     case AWAIT_CHALLANGE:
-      serialComm();
+      authorization_code = serialComm();
+      if(authorization_code != "") {
+        Serial.println("********");
+        CURRENT_STATE = EXCHANGING;
+      }
       break;
     case EXCHANGING:
       exchange();
