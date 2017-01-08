@@ -7,9 +7,11 @@
  * Start editing your configuration here
  */ 
 
+//#define DEBUG true
+
 // WiFi Setup
 const char* ssid = "";
-const char* password = "";
+const char* pass = "";
 
 // Tokens
 String authorization_code = "";
@@ -65,20 +67,6 @@ static const int END_STATE = 5;
 
 // Set global variable attributes.
 static int CURRENT_STATE = INITIAL_STATE;
-
-// create URL
-void authorize() {
-  String URL = auth_uri + "?";
-  URL += "scope=" + urlencode(scope);
-  URL += "&redirect_uri=" + urlencode(redirect_uri);
-  URL += "&response_type=" + urlencode(response_type);
-  URL += "&client_id=" + urlencode(client_id);
-  URL += "&access_type=" + urlencode(access_type);
-  Serial.println("Goto URL: ");
-  Serial.println(URL);
-  Serial.print("Enter code: ");
-  CURRENT_STATE = AWAIT_CHALLANGE;
-}
 
 bool appendToSheet() {
   // Use WiFiClientSecure class to create TLS connection
@@ -233,6 +221,27 @@ bool sendEmail(String body) {
     return true;
   } else {
     return false;
+  }
+}
+
+// create URL
+void authorize() {
+  #ifdef DEBUG
+    Serial.print("Function: "); Serial.println("authorize()");
+  #endif
+  if(refresh_token == "") {
+    String URL = auth_uri + "?";
+    URL += "scope=" + urlencode(scope);
+    URL += "&redirect_uri=" + urlencode(redirect_uri);
+    URL += "&response_type=" + urlencode(response_type);
+    URL += "&client_id=" + urlencode(client_id);
+    URL += "&access_type=" + urlencode(access_type);
+    Serial.println("Goto URL: ");
+    Serial.println(URL);Serial.println();
+    Serial.print("Enter code: ");
+    CURRENT_STATE = AWAIT_CHALLANGE;
+  } else {
+    CURRENT_STATE = INFO;
   }
 }
 
@@ -448,29 +457,29 @@ void serialComm() {
 }
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(115200); Serial.println();
-  Serial.print("Connecting to: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  
+  Serial.print("Connecting to: "); Serial.println(ssid);
+  WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  
+  Serial.println();
+  Serial.print("WiFi connected. "); Serial.print("IP address: "); Serial.println(WiFi.localIP());
+  Serial.println();
+}
 
+void loop() {
   if(access_token != "") {
     sendEmail("<3");
     appendToSheet();
     getSheetContent();
     CURRENT_STATE = INFO;
   }
-}
 
-void loop() {
+  
   // put your main code here, to run repeatedly:
   switch (CURRENT_STATE) {
 
