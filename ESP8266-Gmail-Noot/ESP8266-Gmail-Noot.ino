@@ -8,7 +8,8 @@
  */
 
 //#define DEBUG true
-#define LED_PIN 2   // built-in LED
+#define FILE_NAME "/config.json"    // config on SPIFFS
+#define LED_PIN 2                   // built-in LED
 
 // WiFi Setup
 String wifi_ssid = "";
@@ -340,7 +341,7 @@ bool writeConfig() {
     Serial.println("mounted file system");
 
     Serial.println("open config file for writing");
-    File configFile = SPIFFS.open("/config.json", "w+");
+    File configFile = SPIFFS.open(FILE_NAME, "w+");
     
     if (configFile) {
       Serial.println("opened config file");
@@ -373,10 +374,10 @@ bool readConfig() {
 
   if (SPIFFS.begin()) {
     Serial.println("mounted file system");
-    if (SPIFFS.exists("/config.json")) {
+    if (SPIFFS.exists(FILE_NAME)) {
       //file exists, reading and loading
       Serial.println("reading config file");
-      File configFile = SPIFFS.open("/config.json", "r");
+      File configFile = SPIFFS.open(FILE_NAME, "r");
       if (configFile) {
         Serial.println("opened config file");
         size_t size = configFile.size();
