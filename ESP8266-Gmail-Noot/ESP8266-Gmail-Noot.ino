@@ -500,14 +500,16 @@ String serialComm() {
   while (Serial.available()) {
     String inputString = Serial.readString();
     inputString.trim();
-    if (inputString == "clean") {
-      cleanFS();
-    } else if (inputString == "read") {
-      readConfig();
-    } else if (inputString == "write") {
-      writeConfig();
-    } else {
-      result = inputString;
+    if(inputString != ""){
+      if (inputString == "clean") {
+        cleanFS();
+      } else if (inputString == "read") {
+        readConfig();
+      } else if (inputString == "write") {
+        writeConfig();
+      } else {
+        result = inputString;
+      }
     }
   }
   return result;
@@ -544,6 +546,7 @@ void loop() {
     case AWAIT_CHALLANGE:
       authorization_code = serialComm();
       if (authorization_code != "") {
+        Serial.println(authorization_code);
         CURRENT_STATE = EXCHANGING;
       }
       break;
