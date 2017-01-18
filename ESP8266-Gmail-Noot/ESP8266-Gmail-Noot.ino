@@ -34,10 +34,11 @@ unsigned long POLL_MILLIS = 0;
 // SSL Setup
 // http://askubuntu.com/questions/156620/how-to-verify-the-ssl-fingerprint-by-command-line-wget-curl/
 // echo | openssl s_client -connect www.googleapis.com:443 | openssl x509 -fingerprint -noout
-const char* host = "www.googleapis.com";
 const int httpsPort = 443;
-const char* fingerprint1 = "A6 7A 38 10 2C 29 27 9F F5 91 52 92 49 F2 2A E7 C0 B4 20 A8";
-const char* fingerprint2 = "39 F2 B5 65 4F C9 E2 EF 46 F1 8E BC 66 15 E2 72 79 20 94 46";
+const char *host = "www.googleapis.com";
+const char *fingerprint1 = "A6 7A 38 10 2C 29 27 9F F5 91 52 92 49 F2 2A E7 C0 B4 20 A8";
+const char *fingerprint2 = "39 F2 B5 65 4F C9 E2 EF 46 F1 8E BC 66 15 E2 72 79 20 94 46";
+const char *fingerprint3 = "73 56 DE 7F 17 31 42 9C E4 00 B6 5E E2 8F 59 6E 43 D5 1F 79";
 
 // OAUTH2 Basics
 String access_type = "offline";
@@ -100,7 +101,7 @@ String getRequest(const char* server, String request) {
     return result;
   }
 
-  if (client.verify(fingerprint1, server) || client.verify(fingerprint2, server)) {
+  if (client.verify(fingerprint1, server) || client.verify(fingerprint2, server) || client.verify(fingerprint3, server)) {
 #ifdef DEBUG
     Serial.println("certificate matches");
     Serial.print("get: "); Serial.println(request);
@@ -165,7 +166,7 @@ String postRequest(const char* server, String header, String data) {
     return result;
   }
 
-  if (client.verify(fingerprint1, server) || client.verify(fingerprint2, server)) {
+  if (client.verify(fingerprint1, server) || client.verify(fingerprint2, server) || client.verify(fingerprint3, server)) {
   #ifdef DEBUG
     Serial.println("certificate matches");
     Serial.print("post: "); Serial.println(header + data);
