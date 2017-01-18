@@ -11,17 +11,13 @@
 #define FILE_NAME "/config.json"    // config on SPIFFS
 #define LED_PIN 2                   // built-in LED
 
-// WiFi Setup
-String wifi_ssid = "";
-String wifi_pass = "";
-
-// OAUTH2 credentials
-String client_id = "";
-String client_secret = "";
-
-// Tokens
-String access_token = "";
-String refresh_token = "";
+struct settings {
+  char *wifi_ssid;
+  char *wifi_pass;
+  char *client_id;
+  char *client_secret;
+  char *refresh_token;
+} my_setup;
 
 // Poll settings
 const int POLL_INTERVAL = 10;
@@ -48,6 +44,8 @@ String auth_uri = "https://accounts.google.com/o/oauth2/auth";
 String info_uri = "/oauth2/v3/tokeninfo";
 String token_uri = "/oauth2/v4/token";
 String authorization_code = ""; // leave empty
+String access_token = ""; // leave empty
+
 
 // Send messages only. No read or modify privileges on mailbox.
 String gmail_scope = "https://www.googleapis.com/auth/gmail.readonly";
@@ -215,12 +213,12 @@ void authorize() {
 #ifdef DEBUG
   Serial.print("Function: "); Serial.println("authorize()");
 #endif
-  if (refresh_token == "") {
+  if (isEqual(my_setup.refresh_token, "")) {
     String URL = auth_uri + "?";
     URL += "scope=" + urlencode(scope);
     URL += "&redirect_uri=" + urlencode(redirect_uri);
     URL += "&response_type=" + urlencode(response_type);
-    URL += "&client_id=" + urlencode(client_id);
+    URL += "&client_id=" + urlencode(my_setup.client_id);
     URL += "&access_type=" + urlencode(access_type);
     Serial.println("Goto URL: ");
     Serial.println(URL); Serial.println();
@@ -240,8 +238,8 @@ bool exchange() {
 
     String postData = "";
     postData += "code=" + authorization_code;
-    postData += "&client_id=" + client_id;
-    postData += "&client_secret=" + client_secret;
+    postData += "&client_id=" + (String)my_setup.client_id;
+    postData += "&client_secret=" + (String)my_setup.client_secret;
     postData += "&redirect_uri=" + redirect_uri;
     postData += "&grant_type=" + String("authorization_code");
 
@@ -255,9 +253,18 @@ bool exchange() {
     postHeader += ("\r\n\r\n");
 
     String result = postRequest(host, postHeader, postData);
-    
-    CURRENT_STATE = END_STATE;
-    return true;
+    String refresh_token = parseResponse(result, "refresh_token");
+    if(refresh_token != "") {
+      // FIXME!
+      Serial.print("refresh_token: "); Serial.println(refresh_token);
+      char rt[refresh_token.length() + 1];
+      refresh_token.toCharArray(rt, refresh_token.length() + 1);
+      my_setup.refresh_token = strdup(rt);
+      CURRENT_STATE = END_STATE;
+      return true;
+    } else {
+      return false;
+    }
   } else {
     return false;
   }
@@ -267,12 +274,12 @@ void refresh() {
 #ifdef DEBUG
   Serial.print("Function: "); Serial.println("refresh()");
 #endif
-  if (refresh_token != "") {
-
+  if(!isEqual(my_setup.refresh_token, "")) {
+    
     String postData = "";
-    postData += "refresh_token=" + refresh_token;
-    postData += "&client_id=" + client_id;
-    postData += "&client_secret=" + client_secret;
+    postData += "refresh_token=" + (String)my_setup.refresh_token;
+    postData += "&client_id=" + (String)my_setup.client_id;
+    postData += "&client_secret=" + (String)my_setup.client_secret;
     postData += "&grant_type=" + String("refresh_token");
 
     String postHeader = "";
@@ -336,6 +343,14 @@ void cleanFS() {
   Serial.println("done.");
 }
 
+void printConfig() {
+  Serial.print("wifi_ssid: "); Serial.println(my_setup.wifi_ssid);
+  Serial.print("wifi_pass: "); Serial.println(my_setup.wifi_pass);
+  Serial.print("client_id: "); Serial.println(my_setup.client_id);
+  Serial.print("client_secret: "); Serial.println(my_setup.client_secret);
+  Serial.print("refresh_token: "); Serial.println(my_setup.refresh_token);
+}
+
 bool writeConfig() {
   bool result = false;
   if (SPIFFS.begin()) {
@@ -348,11 +363,11 @@ bool writeConfig() {
       Serial.println("opened config file");
       DynamicJsonBuffer jsonBuffer;
       JsonObject& jsonConfig = jsonBuffer.createObject();
-      jsonConfig["wifi_ssid"] = wifi_ssid;
-      jsonConfig["wifi_pass"] = wifi_pass;
-      jsonConfig["client_id"] = client_id;
-      jsonConfig["client_secret"] = client_secret;
-      jsonConfig["refresh_token"] = refresh_token;
+      jsonConfig["wifi_ssid"] = my_setup.wifi_ssid;
+      jsonConfig["wifi_pass"] = my_setup.wifi_pass;
+      jsonConfig["client_id"] = my_setup.client_id;
+      jsonConfig["client_secret"] = my_setup.client_secret;
+      jsonConfig["refresh_token"] = my_setup.refresh_token;
       jsonConfig.prettyPrintTo(Serial); Serial.println();
       jsonConfig.printTo(configFile);
       result = true;
@@ -392,12 +407,12 @@ bool readConfig() {
         if (jsonConfig.success()) {
           Serial.println("config parsed successfully");
           jsonConfig.prettyPrintTo(Serial); Serial.println();
-
-          wifi_ssid = jsonConfig["wifi_ssid"].as<String>();
-          wifi_pass = jsonConfig["wifi_pass"].as<String>();
-          client_id = jsonConfig["client_id"].as<String>();
-          client_secret = jsonConfig["client_secret"].as<String>();
-          refresh_token = jsonConfig["refresh_token"].as<String>();
+  
+          my_setup.wifi_ssid = (jsonConfig["wifi_ssid"] ? strdup(jsonConfig["wifi_ssid"]) : strdup(""));
+          my_setup.wifi_pass = (jsonConfig["wifi_pass"] ? strdup(jsonConfig["wifi_pass"]) : strdup(""));
+          my_setup.client_id = (jsonConfig["client_id"] ? strdup(jsonConfig["client_id"]) : strdup(""));
+          my_setup.client_secret = (jsonConfig["client_secret"] ? strdup(jsonConfig["client_secret"]) : strdup(""));
+          my_setup.refresh_token = (jsonConfig["refresh_token"] ? strdup(jsonConfig["refresh_token"]) : strdup(""));
           
           result = true;
         } else {
@@ -409,11 +424,11 @@ bool readConfig() {
     } else {
       Serial.println("No config file found.");
     }
+    Serial.println("unmounting file system");
+    SPIFFS.end();
   } else {
     Serial.println("failed to mount FS");
   }
-  Serial.println("unmounting file system");
-  SPIFFS.end();
   return result;
 }
 
@@ -460,6 +475,14 @@ bool getUnreadCount() {
 /*
  * ============ General ============
  */
+
+bool isEqual(const char *stra, const char *strb) {
+  if(strcasecmp(stra, strb) == 0) {
+    return true;
+  } else {
+    return false;
+  }
+}
 
 String urlencode(String str)
 {
@@ -508,6 +531,8 @@ String serialComm() {
         readConfig();
       } else if (inputString == "write") {
         writeConfig();
+      } else if (inputString == "print") {
+        printConfig();
       } else {
         result = inputString;
       }
@@ -519,15 +544,9 @@ String serialComm() {
 void setup() {
   Serial.begin(115200); Serial.println();
   pinMode(LED_PIN, OUTPUT);
-  // read config from file system  
-  readConfig();
-  if(wifi_ssid != "") {
-    Serial.print("Connecting to: "); Serial.println(wifi_ssid);
-    char ssidBuf[wifi_ssid.length()+1];
-    wifi_ssid.toCharArray(ssidBuf, wifi_ssid.length()+1);
-    char passBuf[wifi_pass.length()+1];
-    wifi_pass.toCharArray(passBuf, wifi_pass.length()+1);
-    WiFi.begin(ssidBuf, passBuf);
+  if(readConfig() && strlen(my_setup.wifi_ssid) > 0) {
+    Serial.print("Connecting to: "); Serial.println(my_setup.wifi_ssid);
+    WiFi.begin(my_setup.wifi_ssid, my_setup.wifi_pass);
     while (WiFi.status() != WL_CONNECTED) {
       delay(500);
       Serial.print(".");
@@ -535,6 +554,9 @@ void setup() {
     Serial.println();
     Serial.print("WiFi connected. "); Serial.print("IP address: "); Serial.println(WiFi.localIP());
     Serial.println();
+  } else {
+    Serial.println("No Wireless config.");
+    CURRENT_STATE = END_STATE;
   }
 }
 
