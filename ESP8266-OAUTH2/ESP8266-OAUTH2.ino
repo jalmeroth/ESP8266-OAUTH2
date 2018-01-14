@@ -1,3 +1,4 @@
+#include <time.h>
 #include <base64.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -9,6 +10,12 @@
  */
 
 //#define DEBUG true
+
+// Configure TimeZone
+#define TZ          1             // UTC+1
+#define DST_MIN     0             // One hour for summer time
+#define TZ_SEC      ((TZ)*3600)
+#define DST_SEC     ((DST_MIN)*60)
 
 // WiFi Setup
 const char* ssid = "";
@@ -41,6 +48,8 @@ const char* host = "www.googleapis.com";
 const char* sheetsHost = "sheets.googleapis.com";
 const int httpsPort = 443;
 const char* fingerprint = "A6 7A 38 10 2C 29 27 9F F5 91 52 92 49 F2 2A E7 C0 B4 20 A8";
+extern const unsigned char data_equifax_der[] PROGMEM;
+extern const unsigned int data_equifax_der_len;
 
 // OAUTH2 Basics
 String access_type = "offline";
@@ -172,7 +181,13 @@ String getRequest(const char* server, String request) {
     return result;
   }
 
-  if (client.verify(fingerprint, server)) {
+  if(!client.setCACert_P(data_equifax_der, data_equifax_der_len)) {
+      Serial.println(" Failed!");
+  }
+
+  if(client.verifyCertChain(server)) {
+
+//  if (client.verify(fingerprint, server)) {
 #ifdef DEBUG
     Serial.println("certificate matches");
     Serial.print("get: "); Serial.println(request);
@@ -227,7 +242,13 @@ String postRequest(const char* server, String header, String data) {
     return result;
   }
 
-  if (client.verify(fingerprint, server)) {
+  if(!client.setCACert_P(data_equifax_der, data_equifax_der_len)) {
+      Serial.println(" Failed!");
+  }
+
+  if(client.verifyCertChain(server)) {
+
+//  if (client.verify(fingerprint, server)) {
 #ifdef DEBUG
     Serial.println("certificate matches");
     Serial.print("post: "); Serial.println(header + data);
@@ -377,8 +398,7 @@ String urlencode(String str)
   char c;
   char code0;
   char code1;
-  char code2;
-  for (int i = 0; i < str.length(); i++) {
+  for (unsigned int i = 0; i < str.length(); i++) {
     c = str.charAt(i);
     if (c == ' ') {
       encodedString += '+';
@@ -394,11 +414,9 @@ String urlencode(String str)
       if (c > 9) {
         code0 = c - 10 + 'A';
       }
-      code2 = '\0';
       encodedString += '%';
       encodedString += code0;
       encodedString += code1;
-      //encodedString+=code2;
     }
     yield();
   }
@@ -419,10 +437,9 @@ String serialComm() {
   return result;
 }
 
-void setup() {
-  Serial.begin(115200); Serial.println();
-
+void setupWifi() {
   Serial.print("Connecting to: "); Serial.println(ssid);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -432,6 +449,29 @@ void setup() {
   Serial.println();
   Serial.print("WiFi connected. "); Serial.print("IP address: "); Serial.println(WiFi.localIP());
   Serial.println();
+}
+
+void setupSNTP() {
+  // Synchronize time using SNTP. This is necessary to verify that
+  // the TLS certificates offered by the server are currently valid.
+  Serial.print("Setting time using SNTP"); Serial.println("");
+  configTime(TZ_SEC, DST_SEC, "pool.ntp.org", "time.nist.gov");
+  delay(500);
+  time_t now = time(nullptr);
+
+  // While it's before 2000, let's wait
+  while (((2018 - 1970) * 365 * 24 * 3600) > time(&now)) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println(ctime(&now));
+}
+
+void setup() {
+  Serial.begin(115200); Serial.println();
+  setupWifi();
+  setupSNTP();
 }
 
 void loop() {
